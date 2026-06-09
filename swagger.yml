@@ -1,0 +1,320 @@
+openapi: 3.0.3
+info:
+  title: UNIPR Aula Studio Booking API
+  description: |
+    Contratto REST UNIPR Aula Studio Booking (app-base).
+    Envelope { success, data } | { success, error }.
+    In app-base molti endpoint sono stub/TODO — vedi app-base/README.md.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Docker locale
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome:
+          type: string
+        cognome:
+          type: string
+        email:
+          type: string
+        matricola:
+          type: string
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome:
+          type: string
+        edificio:
+          type: string
+        piano:
+          type: integer
+        stato:
+          type: string
+          enum: [attiva, chiusa, manutenzione]
+        capienza:
+          type: integer
+        posti_totali:
+          type: integer
+        posti_liberi:
+          type: integer
+
+    Seat:
+      type: object
+      properties:
+        id:
+          type: integer
+        numero:
+          type: integer
+        coordX:
+          type: integer
+        coordY:
+          type: integer
+        stato:
+          type: string
+          enum: [libero, occupato, non_prenotabile]
+
+    TimeSlot:
+      type: object
+      properties:
+        id:
+          type: integer
+        data:
+          type: string
+          format: date
+        start:
+          type: string
+          example: "09:00:00"
+        end:
+          type: string
+          example: "11:00:00"
+        tipo:
+          type: string
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+        stato:
+          type: string
+          example: confermata
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login studente (mock JWT in v2)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                      user:
+                        $ref: '#/components/schemas/User'
+        "401":
+          description: Credenziali non valide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/rooms:
+    get:
+      tags: [Rooms]
+      summary: Elenco aule studio (v2 legge da DB)
+      responses:
+        "200":
+          description: Lista aule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+
+  /api/v1/rooms/{roomId}/seats:
+    get:
+      tags: [Rooms]
+      summary: Mappa e posti di un'aula
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Posti aula
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      roomId:
+                        type: integer
+                      mappa:
+                        type: object
+                      posti:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Seat'
+        "404":
+          description: Aula non trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/rooms/{roomId}/timeslots:
+    get:
+      tags: [Rooms]
+      summary: Time-slot disponibili per aula
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lista slot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimeSlot'
+
+  /api/v1/bookings:
+    get:
+      tags: [Bookings]
+      summary: Prenotazioni dell'utente corrente
+      parameters:
+        - name: me
+          in: query
+          required: true
+          schema:
+            type: boolean
+            enum: [true]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lista prenotazioni
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+    post:
+      tags: [Bookings]
+      summary: Crea prenotazione (transazione + anti-overbooking)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roomId, seatId, timeslotId]
+              properties:
+                roomId:
+                  type: integer
+                seatId:
+                  type: integer
+                timeslotId:
+                  type: integer
+                userId:
+                  type: integer
+                  description: Opzionale in dev; in produzione da JWT
+      responses:
+        "201":
+          description: Prenotazione creata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Booking'
+        "409":
+          description: Posto non più disponibile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/bookings/{bookingId}:
+    put:
+      tags: [Bookings]
+      summary: Modifica prenotazione (fase successiva)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "501":
+          description: Non ancora implementato
+    delete:
+      tags: [Bookings]
+      summary: Cancella prenotazione (fase successiva)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "501":
+          description: Non ancora implementato

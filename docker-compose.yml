@@ -1,0 +1,40 @@
+services:
+  webserver:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html/frontend:ro
+      - ./backend:/usr/share/nginx/html/backend:ro
+      - ./swagger.yml:/usr/share/nginx/html/swagger.yml:ro
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - php
+
+  php:
+    build: ./docker/php
+    volumes:
+      - ./backend:/usr/share/nginx/html/backend
+    environment:
+      DB_HOST: database
+      DB_NAME: unipr_booking
+      DB_USER: unipr_user
+      DB_PASS: unipr_password
+    depends_on:
+      - database
+
+  database:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: unipr_booking
+      MYSQL_USER: unipr_user
+      MYSQL_PASSWORD: unipr_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  db_data:
